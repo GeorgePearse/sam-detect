@@ -55,3 +55,8 @@ ehthumbs.db
 
 # Generated visualizations (interactive)
 docs/images/*.html
+
+# Rust CLI build artifacts
+rust-cli/target/
+rust-cli/Cargo.lock
+rust-cli/models/*.onnx

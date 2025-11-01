@@ -1,0 +1,53 @@
+[package]
+name = "sam-detect-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["George Pearse"]
+description = "Rust CLI for SAM2 + CLIP detection with TensorRT acceleration"
+
+[dependencies]
+# ONNX Runtime with TensorRT
+ort = { version = "2.0.0-rc.10", features = ["load-dynamic"] }
+
+# Vector database
+qdrant-client = "1.9"
+
+# Image processing
+image = "0.25"
+ndarray = "0.15"
+
+# CLI framework
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime (for Qdrant client)
+tokio = { version = "1.37", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# File system utilities
+walkdir = "2.4"
+
+# Fast hashing
+fxhash = "0.2"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "inference"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
