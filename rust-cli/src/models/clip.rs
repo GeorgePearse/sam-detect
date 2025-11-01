@@ -63,7 +63,8 @@ impl CLIPModel {
         );
 
         // Run inference
-        let outputs = self.session.run(ort::inputs!["pixel_values" => image.view()]?)?;
+        let outputs = self.session.run(ort::inputs!["pixel_values" => image.to_owned()])
+            .context("Failed to run CLIP inference")?;
 
         // Extract embeddings
         let embeddings = outputs["embeddings"].try_extract_array::<f32>()?;

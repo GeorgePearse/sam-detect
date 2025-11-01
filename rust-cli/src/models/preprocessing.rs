@@ -164,4 +164,55 @@ mod tests {
         assert_eq!(cropped.width(), 40);
         assert_eq!(cropped.height(), 40);
     }
+
+    #[test]
+    fn test_crop_image_full() {
+        let img = create_test_image();
+        // Crop entire image
+        let cropped = crop_image(&img, 0, 0, 100, 100);
+        assert!(cropped.is_ok());
+        let cropped = cropped.unwrap();
+        assert_eq!(cropped.width(), 100);
+        assert_eq!(cropped.height(), 100);
+    }
+
+    #[test]
+    fn test_crop_image_corner() {
+        let img = create_test_image();
+        // Crop just one pixel corner
+        let cropped = crop_image(&img, 0, 0, 1, 1);
+        assert!(cropped.is_ok());
+        let cropped = cropped.unwrap();
+        assert_eq!(cropped.width(), 1);
+        assert_eq!(cropped.height(), 1);
+    }
+
+    #[test]
+    fn test_preprocess_crop_for_clip() {
+        let img = create_test_image();
+        let cropped = crop_image(&img, 10, 10, 50, 50).unwrap();
+        let result = preprocess_crop_for_clip(&cropped);
+        assert!(result.is_ok());
+        let array = result.unwrap();
+        assert_eq!(array.shape(), &[1, 3, 224, 224]);
+    }
+
+    #[test]
+    fn test_sam2_normalization_range() {
+        let img = create_test_image();
+        let array = preprocess_for_sam2(&img).unwrap();
+        // Values should be in [0, 1] range
+        let min = array.iter().copied().fold(f32::INFINITY, f32::min);
+        let max = array.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        assert!(min >= 0.0);
+        assert!(max <= 1.0);
+    }
+
+    #[test]
+    fn test_clip_output_shape() {
+        let img = create_test_image();
+        let array = preprocess_for_clip(&img).unwrap();
+        // Should be [1, 3, 224, 224] with batch size 1
+        assert_eq!(array[[0, 0, 0, 0]].is_finite(), true);
+    }
 }

@@ -56,7 +56,8 @@ impl SAM2Model {
         );
 
         // Run inference
-        let outputs = self.session.run(ort::inputs!["image" => image.view()]?)?;
+        let outputs = self.session.run(ort::inputs!["image" => image.to_owned()])
+            .context("Failed to run SAM2 inference")?;
 
         // Extract masks from outputs
         // SAM2 outputs image embeddings, which we'll convert to mask format

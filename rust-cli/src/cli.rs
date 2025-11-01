@@ -114,9 +114,52 @@ mod tests {
     }
 
     #[test]
+    fn test_output_format_parsing_case_insensitive() {
+        assert_eq!("JSON".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
+        assert_eq!("TEXT".parse::<OutputFormat>().unwrap(), OutputFormat::Text);
+        assert_eq!("Json".parse::<OutputFormat>().unwrap(), OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_output_format_display() {
+        assert_eq!(OutputFormat::Json.to_string(), "json");
+        assert_eq!(OutputFormat::Text.to_string(), "text");
+    }
+
+    #[test]
     fn test_log_level() {
         assert_eq!(get_log_level(0), "info");
         assert_eq!(get_log_level(1), "debug");
         assert_eq!(get_log_level(2), "trace");
+        assert_eq!(get_log_level(3), "trace");
+        assert_eq!(get_log_level(255), "trace");
+    }
+
+    #[test]
+    fn test_output_format_equality() {
+        let json1 = OutputFormat::Json;
+        let json2 = OutputFormat::Json;
+        let text = OutputFormat::Text;
+
+        assert_eq!(json1, json2);
+        assert_ne!(json1, text);
+    }
+
+    #[test]
+    fn test_output_format_clone_copy() {
+        let fmt = OutputFormat::Json;
+        let fmt2 = fmt; // Copy trait
+        assert_eq!(fmt, fmt2);
+    }
+
+    #[test]
+    fn test_output_format_parsing_empty_string() {
+        assert!("".parse::<OutputFormat>().is_err());
+    }
+
+    #[test]
+    fn test_output_format_parsing_partial_match() {
+        assert!("jso".parse::<OutputFormat>().is_err());
+        assert!("js".parse::<OutputFormat>().is_err());
     }
 }
