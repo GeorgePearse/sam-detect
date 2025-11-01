@@ -14,6 +14,7 @@ authors = [{name = "George Pearse"}]
 qdrant = ["qdrant-client>=1.7.3"]
 clip = ["torch>=2.0.0", "open_clip_torch>=2.24.0"]
 pil = ["pillow>=10.0.0"]
+viz = ["matplotlib>=3.7.0", "seaborn>=0.12.0", "plotly>=5.0.0"]
 
 [project.scripts]
 sam-detect = "sam_detect.cli:main"

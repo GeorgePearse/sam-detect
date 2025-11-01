@@ -52,3 +52,6 @@ htmlcov/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+
+# Generated visualizations (interactive)
+docs/images/*.html

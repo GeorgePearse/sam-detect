@@ -1,0 +1,91 @@
+SAMDetect Test Pipeline
+======================================================================
+Loading COCO dataset...
+
+Dataset Info:
+  Total images: 5000
+  Total annotations: 36781
+  Categories: 80
+  Sample classes: person, bicycle, car, motorcycle, airplane...
+
+Initializing SAMDetect...
+
+Phase 1: Adding 3 labeled examples...
+  ✓ Added example: oven (image 397133)
+  ✓ Added example: sink (image 397133)
+  ✓ Added example: person (image 397133)
+  ✓ Added example: broccoli (image 397133)
+  ✓ Added example: knife (image 397133)
+  ✓ Added example: dining table (image 397133)
+  ✓ Added example: carrot (image 397133)
+  ✓ Added example: bowl (image 397133)
+  ✓ Added example: bottle (image 397133)
+  ✓ Added example: spoon (image 397133)
+  ✓ Added example: cup (image 397133)
+  ✓ Added example: oven (image 37777)
+  ✓ Added example: sink (image 37777)
+  ✓ Added example: orange (image 37777)
+  ✓ Added example: dining table (image 37777)
+  ✓ Added example: refrigerator (image 37777)
+  ✓ Added example: chair (image 37777)
+  ✓ Added example: banana (image 37777)
+  ✓ Added example: potted plant (image 37777)
+  ✓ Added example: handbag (image 252219)
+  ✓ Added example: person (image 252219)
+  ✓ Added example: umbrella (image 252219)
+  ✓ Added example: traffic light (image 252219)
+  ✓ Added example: cup (image 252219)
+Added 24 examples
+
+Phase 2: Running detection on 10 images...
+  [1/10] Image 397133: 1 detections | GT: bottle, dining table, person
+  [2/10] Image 37777: 1 detections | GT: potted plant, chair, chair
+  [3/10] Image 252219: 1 detections | GT: person, person, person
+  [4/10] Image 87038: 1 detections | GT: bicycle, person, person
+  [5/10] Image 174482: 1 detections | GT: bicycle, car, car
+  [6/10] Image 403385: 1 detections | GT: toilet, sink
+  [7/10] Image 6818: 1 detections | GT: toilet
+  [8/10] Image 480985: 1 detections | GT: motorcycle, motorcycle, person
+  [9/10] Image 458054: 1 detections | GT: toilet, toilet, toilet
+  [10/10] Image 331352: 1 detections | GT: toilet, sink
+
+======================================================================
+TEST PIPELINE RESULTS
+======================================================================
+
+Dataset: COCO val2017
+  Total images: 5,000
+  Total annotations: 36,781
+  Categories: 80
+
+Training Phase:
+  Examples added: 24
+
+Detection Phase:
+  Images processed: 10
+  Total detections: 10
+  Ground truth objects: 97
+  Images with detections: 10
+  Avg detections/image: 1.00
+  Detection rate: 100.0%
+
+Sample Detections (first 3 images):
+
+  Image 397133:
+    Detections: 1
+    Ground truth: bottle, dining table, person, knife, bowl, bowl, oven, person, cup, cup, bowl, bowl, broccoli, spoon, broccoli, broccoli, oven, carrot, sink
+      - oven (1.00) (matched: oven @ 1.00)
+
+  Image 37777:
+    Detections: 1
+    Ground truth: potted plant, chair, chair, dining table, refrigerator, banana, oven, sink, orange, orange, orange, orange, chair, orange
+      - oven (1.00) (matched: oven @ 1.00)
+
+  Image 252219:
+    Detections: 1
+    Ground truth: person, person, person, umbrella, handbag, cup, traffic light
+      - handbag (1.00) (matched: handbag @ 1.00)
+
+======================================================================
+
+Results saved to: test_results.json

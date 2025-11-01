@@ -366,6 +366,8 @@ Approximate latencies (GPU: RTX 4090):
 
 For real-time video: 6-7 FPS per GPU at 1080p with 5-10 objects per frame.
 
+**See also:** [Performance Analysis](docs/performance.md) for speed vs accuracy trade-off visualization and configuration recommendations.
+
 ## Roadmap
 
 - [ ] **Phase 1 (MVP)**: Core segmentation + fading + QDrant integration
