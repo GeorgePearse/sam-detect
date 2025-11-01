@@ -374,6 +374,24 @@ For real-time video: 6-7 FPS per GPU at 1080p with 5-10 objects per frame.
 - [ ] **Phase 4 (Production)**: Distributed QDrant, model serving (TorchServe/ONNX), monitoring
 - [ ] **Phase 5 (Research)**: Multi-modal embeddings, active learning, online adaptation
 
+## TODO: Metrics Dashboard
+
+Similar to [rust-analyzer metrics](https://rust-analyzer.github.io/metrics/), we should build:
+
+- **Performance tracking dashboard**: Track inference latency, embedding quality, and detection accuracy over time
+- **Continuous benchmarking**: Automated evaluation on COCO/custom datasets after each commit
+- **Metrics visualization**: Charts showing:
+  - Average inference time per component (segmentation, embedding, k-NN search)
+  - Detection accuracy/mAP across different fading strategies
+  - Embedding quality metrics (embedding similarity, clustering)
+  - Memory usage and throughput
+  - Few-shot learning convergence curves
+- **Regression detection**: Alert on performance degradation
+- **Multi-backend comparison**: Compare performance across embedders (average, CLIP) and backends (memory, QDrant)
+- **Hardware tracking**: Benchmark across different GPUs (A10, RTX 3060, RTX 4090, etc.)
+
+This would enable transparent performance monitoring and help identify optimization opportunities.
+
 ## Contributing
 
 Contributions welcome! Areas of interest:
