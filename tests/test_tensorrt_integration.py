@@ -187,41 +187,41 @@ class TestCLIArgumentParsing(unittest.TestCase):
     """Test CLI argument parsing for TensorRT options."""
 
     def test_segmenter_choice_argument(self) -> None:
-        """Test CLI accepts segmenter choice argument."""
-        from sam_detect.cli import _build_segmenter
+        """Test model registry builds segmenter correctly."""
+        from sam_detect.model_registry import build_segmenter
 
         # Should not raise error
-        segmenter = _build_segmenter("naive", "base", "cpu")
+        segmenter = build_segmenter("naive", "cpu")
         self.assertIsInstance(segmenter, NaiveSegmenter)
 
     def test_embedder_choice_argument(self) -> None:
-        """Test CLI accepts embedder choice argument."""
-        from sam_detect.cli import _build_embedder
+        """Test model registry builds embedder correctly."""
+        from sam_detect.model_registry import build_embedder
 
         # Should not raise error
-        embedder = _build_embedder("average", "base", "cpu")
+        embedder = build_embedder("average", "cpu")
         self.assertIsInstance(embedder, AverageColorEmbedder)
 
     def test_invalid_segmenter_choice(self) -> None:
-        """Test CLI handles invalid segmenter choice gracefully."""
-        from sam_detect.cli import _build_segmenter
+        """Test model registry handles invalid segmenter choice gracefully."""
+        from sam_detect.model_registry import build_segmenter
 
         # Should raise error for invalid choice
         try:
-            _build_segmenter("invalid_segmenter", "base", "cpu")
+            build_segmenter("invalid_segmenter", "cpu")
             self.fail("Should have raised an error")
-        except (ValueError, KeyError, AttributeError):
+        except ValueError:
             pass  # Expected
 
     def test_invalid_embedder_choice(self) -> None:
-        """Test CLI handles invalid embedder choice gracefully."""
-        from sam_detect.cli import _build_embedder
+        """Test model registry handles invalid embedder choice gracefully."""
+        from sam_detect.model_registry import build_embedder
 
         # Should raise error for invalid choice
         try:
-            _build_embedder("invalid_embedder", "base", "cpu")
+            build_embedder("invalid_embedder", "cpu")
             self.fail("Should have raised an error")
-        except (ValueError, KeyError, AttributeError):
+        except ValueError:
             pass  # Expected
 
 
@@ -349,14 +349,12 @@ class TestIntegration(unittest.TestCase):
     """Integration tests combining multiple components."""
 
     def test_fallback_pipeline_works(self) -> None:
-        """Test that fallback components work together."""
+        """Test that fallback components work together with string API."""
         from sam_detect.pipeline import SAMDetect
 
-        segmenter = NaiveSegmenter()
-        embedder = AverageColorEmbedder()
-
         try:
-            pipeline = SAMDetect(segmenter=segmenter, embedder=embedder)
+            # Use string-based API for lightweight fallback models
+            pipeline = SAMDetect(segmenter="naive", embedder="average", device="cpu")
             self.assertIsNotNone(pipeline)
         except Exception as e:
             self.fail(f"Pipeline initialization failed: {e}")
@@ -366,9 +364,8 @@ class TestIntegration(unittest.TestCase):
         try:
             from sam_detect import cli
 
-            # Verify the build functions exist
-            self.assertTrue(hasattr(cli, "_build_segmenter"))
-            self.assertTrue(hasattr(cli, "_build_embedder"))
+            # Verify the main entry point exists
+            self.assertTrue(hasattr(cli, "main"))
         except ImportError:
             self.fail("CLI module should be importable")
 

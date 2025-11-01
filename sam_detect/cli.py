@@ -8,11 +8,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from .embedding import AverageColorEmbedder, CLIPEmbedder, Embedder
-from .fading import FadeStrategy, GaussianFade, IdentityFade
+from .model_registry import SEGMENTERS, EMBEDDERS, FADE_STRATEGIES, VECTOR_STORES
 from .pipeline import SAMDetect, summarize_detection
-from .segmentation import NaiveSegmenter, SAM2Segmenter, SegmentationBackend
-from .vector_store import InMemoryVectorStore, QdrantVectorStore, VectorStore
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -20,20 +17,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        segmenter = _build_segmenter(args.segmenter, args.sam_model, args.device)
-        embedder = _build_embedder(args.embedder, args.clip_model, args.device)
-        fade = _build_fade(args.fade, args.sigma, args.min_fade)
-        store = _build_vector_store(args.store, args.qdrant_url, args.qdrant_collection)
+        detector = SAMDetect(
+            segmenter=args.segmenter,
+            embedder=args.embedder,
+            fade_strategy=args.fade_strategy,
+            vector_store=args.vector_store,
+            device=args.device,
+            qdrant_url=args.qdrant_url,
+            qdrant_collection=args.qdrant_collection,
+            default_top_k=args.top_k,
+        )
     except (ImportError, ValueError) as exc:
         parser.error(str(exc))
-
-    detector = SAMDetect(
-        segmenter=segmenter,
-        embedder=embedder,
-        fade_strategy=fade,
-        vector_store=store,
-        default_top_k=args.top_k,
-    )
 
     loaded_images = [(path, _load_image(path)) for path in args.images]
 
@@ -64,28 +59,17 @@ def _build_parser() -> argparse.ArgumentParser:
     # Segmentation options
     parser.add_argument(
         "--segmenter",
-        choices=("naive", "sam2"),
-        default="naive",
-        help="Segmentation backend (naive for testing, sam2 for production)",
-    )
-    parser.add_argument(
-        "--sam-model",
-        choices=("small", "base", "large"),
-        default="base",
-        help="SAM2 model size (small/base/large)",
+        choices=SEGMENTERS,
+        default="sam2-base",
+        help=f"Segmentation model. Options: {', '.join(SEGMENTERS)}",
     )
 
     # Embedding options
     parser.add_argument(
         "--embedder",
-        choices=("average", "clip"),
-        default="average",
-        help="Embedding backend",
-    )
-    parser.add_argument(
-        "--clip-model",
-        default="openai/clip-vit-base-patch32",
-        help="CLIP model identifier from Hugging Face",
+        choices=EMBEDDERS,
+        default="clip-vit-base",
+        help=f"Embedding model. Options: {', '.join(EMBEDDERS)}",
     )
 
     # Device options
@@ -98,10 +82,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Vector store options
     parser.add_argument(
-        "--store",
-        choices=("memory", "qdrant"),
+        "--vector-store",
+        choices=VECTOR_STORES,
         default="memory",
-        help="Vector store backend",
+        dest="vector_store",
+        help=f"Vector store backend. Options: {', '.join(VECTOR_STORES)}",
     )
     parser.add_argument(
         "--qdrant-url", help="Qdrant endpoint, e.g. http://localhost:6333"
@@ -114,17 +99,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Fading options
     parser.add_argument(
-        "--fade",
-        choices=("identity", "gaussian"),
-        default="identity",
-        help="Fading strategy",
-    )
-    parser.add_argument("--sigma", type=float, default=30.0, help="Gaussian sigma")
-    parser.add_argument(
-        "--min-fade",
-        type=float,
-        default=0.05,
-        help="Minimum fade value for Gaussian strategy",
+        "--fade-strategy",
+        choices=FADE_STRATEGIES,
+        default="gaussian",
+        dest="fade_strategy",
+        help=f"Fading strategy. Options: {', '.join(FADE_STRATEGIES)}",
     )
 
     # Search options
@@ -143,66 +122,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Emit JSON instead of text",
     )
     return parser
-
-
-def _build_segmenter(choice: str, sam_model: str, device: str) -> SegmentationBackend:
-    """Build segmenter based on CLI arguments.
-
-    Args:
-        choice: Segmenter choice - "naive" or "sam2"
-        sam_model: SAM2 model size - "small", "base", or "large"
-        device: Device - "cuda" or "cpu"
-
-    Returns:
-        Configured segmentation backend
-
-    Raises:
-        ValueError: If invalid segmenter choice
-        ImportError: If required dependencies are missing
-    """
-    if choice == "naive":
-        return NaiveSegmenter()
-    if choice == "sam2":
-        return SAM2Segmenter(model_size=sam_model, device=device)
-    raise ValueError(f"Unsupported segmenter '{choice}'")
-
-
-def _build_embedder(choice: str, model_name: str, device: str) -> Embedder:
-    """Build embedder based on CLI arguments.
-
-    Args:
-        choice: Embedder choice - "average" or "clip"
-        model_name: Model identifier for CLIP
-        device: Device - "cuda" or "cpu"
-
-    Returns:
-        Configured embedding backend
-
-    Raises:
-        ValueError: If invalid embedder choice
-        ImportError: If required dependencies are missing
-    """
-    if choice == "average":
-        return AverageColorEmbedder()
-    if choice == "clip":
-        return CLIPEmbedder(model_name=model_name, device=device)
-    raise ValueError(f"Unsupported embedder '{choice}'")
-
-
-def _build_fade(choice: str, sigma: float, min_fade: float) -> FadeStrategy:
-    if choice == "identity":
-        return IdentityFade()
-    if choice == "gaussian":
-        return GaussianFade(sigma=sigma, min_fade=min_fade)
-    raise ValueError(f"Unsupported fade strategy '{choice}'")
-
-
-def _build_vector_store(store: str, url: Optional[str], collection: str) -> VectorStore:
-    if store == "memory":
-        return InMemoryVectorStore()
-    if store == "qdrant":
-        return QdrantVectorStore(url=url, collection_name=collection)
-    raise ValueError(f"Unsupported vector store '{store}'")
 
 
 def _print_human_output(results: Iterable[Dict[str, Any]]) -> None:

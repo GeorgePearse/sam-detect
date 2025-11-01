@@ -108,17 +108,23 @@ pip install -e .
 # 1. Install the project (editable install recommended for dev work)
 uv pip install -e .
 
-# 2. Run a memory-backed detection with the default fade
-sam-detect path/to/image.jpg
+# 2. Run with lightweight models (CPU-friendly, no GPU required)
+sam-detect path/to/image.jpg \
+  --segmenter naive \
+  --embedder average \
+  --device cpu
 
 # 3. Add an example to prime the in-memory store, then detect again
 sam-detect path/to/image.jpg --label widget
 
-# 4. Optional: start Qdrant and enable retrieval + Gaussian fading
+# 4. Optional: start Qdrant and enable persistent storage
 docker run -p 6333:6333 qdrant/qdrant:latest
 sam-detect path/to/image.jpg \
-  --store qdrant --qdrant-url http://localhost:6333 \
-  --fade gaussian --sigma 30 --min-fade 0.05 \
+  --segmenter naive \
+  --embedder average \
+  --vector-store qdrant \
+  --qdrant-url http://localhost:6333 \
+  --fade-strategy identity \
   --top-k 5 --json
 ```
 
@@ -131,25 +137,30 @@ python -m sam_detect.download_models
 
 # 2. Run with SAM2 segmentation and CLIP embeddings
 sam-detect path/to/image.jpg \
-  --segmenter sam2 --sam-model base \
-  --embedder clip --device cuda
+  --segmenter sam2-base \
+  --embedder clip-vit-base \
+  --device cuda
 
 # 3. Or with Qdrant for persistent storage
 sam-detect path/to/image.jpg \
-  --segmenter sam2 --sam-model base \
-  --embedder clip --device cuda \
-  --store qdrant --qdrant-url http://localhost:6333 \
-  --fade gaussian --sigma 30 --top-k 5 --json
+  --segmenter sam2-base \
+  --embedder clip-vit-base \
+  --device cuda \
+  --vector-store qdrant \
+  --qdrant-url http://localhost:6333 \
+  --fade-strategy gaussian \
+  --top-k 5 --json
 ```
 
 **Key CLI flags:**
-- `--segmenter {naive|sam2}` - Segmentation backend (naive for testing, sam2 for production)
-- `--sam-model {small|base|large}` - SAM2 model size (base balances speed/accuracy)
-- `--embedder {average|clip}` - Embedding strategy (clip requires TensorRT install)
-- `--device {cuda|cpu}` - Device for inference (CUDA required for TensorRT)
-- `--store {memory|qdrant}` - Vector store backend
-- `--fade {identity|gaussian}`, `--sigma`, `--min-fade` - Context fading tuning
-- `--top-k` - Number of nearest neighbours to return
+- `--segmenter {naive|sam2-small|sam2-base|sam2-large}` - Segmentation model (default: sam2-base)
+- `--embedder {average|clip-vit-base|clip-vit-large}` - Embedding model (default: clip-vit-base)
+- `--device {cuda|cpu}` - Device for inference (default: cuda)
+- `--vector-store {memory|qdrant}` - Vector store backend (default: memory)
+- `--qdrant-url` - Qdrant server endpoint (required if using --vector-store qdrant)
+- `--qdrant-collection` - Qdrant collection name (default: sam_detect)
+- `--fade-strategy {identity|gaussian}` - Context fading strategy (default: gaussian)
+- `--top-k` - Number of nearest neighbours to return (default: 1)
 - `--json` - Emit JSON instead of text
 
 ### Quick Start (Python API)
@@ -198,29 +209,35 @@ export QDRANT_URL=https://your-instance.qdrant.io
 
 ```python
 from sam_detect import SAMDetect
-from sam_detect.segmentation import SAM2Segmenter
-from sam_detect.embedding import CLIPEmbedder
-from sam_detect.fading import GaussianFade
 
-# Create detector with SAM2 segmentation and CLIP embeddings
+# Production defaults: SAM2 Base + CLIP ViT-Base on CUDA
+detector = SAMDetect()
+
+# Or customize with string identifiers:
 detector = SAMDetect(
-    segmenter=SAM2Segmenter(model_size="base", device="cuda"),
-    embedder=CLIPEmbedder(model_name="openai/clip-vit-base-patch32", device="cuda"),
-    fade_strategy=GaussianFade(sigma=30, min_fade=0.1),
+    segmenter="sam2-base",      # Options: "naive", "sam2-small", "sam2-base", "sam2-large"
+    embedder="clip-vit-base",   # Options: "average", "clip-vit-base", "clip-vit-large"
+    fade_strategy="gaussian",   # Options: "identity", "gaussian"
+    device="cuda",
 )
 
 # With Qdrant for persistent storage
-from sam_detect.vector_store import QdrantVectorStore
-
 detector = SAMDetect(
-    segmenter=SAM2Segmenter(model_size="base", device="cuda"),
-    embedder=CLIPEmbedder(device="cuda"),
-    fade_strategy=GaussianFade(sigma=30),
-    vector_store=QdrantVectorStore(
-        url="http://localhost:6333",
-        collection_name="sam_detect"
-    ),
+    segmenter="sam2-base",
+    embedder="clip-vit-base",
+    fade_strategy="gaussian",
+    vector_store="qdrant",
+    qdrant_url="http://localhost:6333",
+    qdrant_collection="sam_detect",
+    device="cuda",
     default_top_k=5,
+)
+
+# Lightweight CPU-only alternative
+detector = SAMDetect(
+    segmenter="naive",
+    embedder="average",
+    device="cpu",
 )
 ```
 
@@ -231,15 +248,18 @@ detector = SAMDetect(
 ```python
 import cv2
 from sam_detect import SAMDetect
+from PIL import Image
 
-detector = SAMDetect(device="cuda")
-
-# First, add some labeled examples to QDrant
-detector.add_examples_from_file(
-    image_path="person.jpg",
-    masks="auto",  # Auto-segment with SAM2
-    label="person"
+detector = SAMDetect(
+    segmenter="sam2-base",
+    embedder="clip-vit-base",
+    device="cuda"
 )
+
+# Optionally pre-load some labeled examples
+# (This is optional for few-shot learning)
+detector.add_example("example_person.jpg", "person")
+detector.add_example("example_chair.jpg", "chair")
 
 # Process video stream
 cap = cv2.VideoCapture(0)  # Webcam
@@ -253,13 +273,22 @@ while True:
     results = detector.detect(frame)
 
     # results = [
-    #     {"mask": ndarray, "label": "person", "confidence": 0.94},
-    #     {"mask": ndarray, "label": "person", "confidence": 0.87},
+    #     {
+    #         "label": "person",
+    #         "confidence": 0.94,
+    #         "embedding": (...),
+    #         "matches": [{"label": "person", "score": 0.94}],
+    #         "result": SegmentationResult(...)
+    #     },
+    #     ...
     # ]
 
-    # Visualize
-    viz = detector.visualize(frame, results)
-    cv2.imshow("sam-detect", viz)
+    # Draw on frame (basic example)
+    for detection in results:
+        label = f"{detection['label']} ({detection['confidence']:.2f})"
+        cv2.putText(frame, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    cv2.imshow("sam-detect", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
@@ -268,135 +297,174 @@ cap.release()
 cv2.destroyAllWindows()
 ```
 
-### Batch Processing with Adaptive Learning
+### Batch Processing with Few-Shot Learning
 
 ```python
 from sam_detect import SAMDetect
 from pathlib import Path
 
-detector = SAMDetect(device="cuda")
+detector = SAMDetect(
+    segmenter="sam2-base",
+    embedder="clip-vit-base",
+    vector_store="qdrant",
+    qdrant_url="http://localhost:6333",
+    device="cuda"
+)
 
-# Process images and progressively add labeled examples
-image_dir = Path("datasets/objects")
+# Step 1: Add some labeled reference examples (few-shot learning)
+reference_images = {
+    "person": "examples/person_1.jpg",
+    "dog": "examples/dog_1.jpg",
+    "chair": "examples/chair_1.jpg",
+}
+
+for label, image_path in reference_images.items():
+    detector.add_example(image_path, label)
+
+print(f"Added {len(reference_images)} reference examples")
+
+# Step 2: Process images and detect objects
+image_dir = Path("datasets/unlabeled")
+detections_by_image = {}
 
 for image_path in image_dir.glob("*.jpg"):
     results = detector.detect(str(image_path))
+    detections_by_image[str(image_path)] = results
 
-    # Show results to user (or use model predictions if confident)
-    for i, result in enumerate(results):
-        # Save crop for later labeling
-        crop = detector.get_crop(image_path, result["mask"])
-        crop.save(f"crops/{image_path.stem}_{i}.png")
+    # Print results
+    for i, detection in enumerate(results):
+        print(f"  Detection {i}: {detection['label']} ({detection['confidence']:.2f})")
 
-        # If confident prediction, add to database
-        if result["confidence"] > 0.85:
-            detector.add_example(
-                image=crop,
-                label=result["label"]
-            )
-
-print(f"Added {len(results)} examples to QDrant")
+print(f"\nProcessed {len(detections_by_image)} images")
 ```
 
-### Interactive Annotation Tool
+### Few-Shot Learning: Build Custom Classifiers
 
 ```python
-from sam_detect import SAMDetect, AnnotationUI
+from sam_detect import SAMDetect
+from pathlib import Path
 
-detector = SAMDetect(device="cuda")
-annotation_ui = AnnotationUI(detector)
-
-# Launch interactive web UI for rapid annotation
-# - Shows SAM2 segmentation
-# - Stores labeled examples in QDrant
-# - Provides instant feedback (1s per image)
-# - Suggests labels based on similarity search
-annotation_ui.run(
-    image_directory="unlabeled_data/",
-    port=8000
+# Create detector with persistent storage
+detector = SAMDetect(
+    segmenter="sam2-base",
+    embedder="clip-vit-base",
+    vector_store="qdrant",
+    qdrant_url="http://localhost:6333",
+    device="cuda"
 )
 
-# Visit http://localhost:8000 to start annotating
+# Collect reference examples for each class
+dataset_dir = Path("training_data")
+for class_dir in dataset_dir.iterdir():
+    label = class_dir.name
+    for image_path in class_dir.glob("*.jpg"):
+        detector.add_example(str(image_path), label)
+        print(f"Added {label}: {image_path.name}")
+
+# Now classify new images using similarity search
+test_dir = Path("test_data")
+for test_image in test_dir.glob("*.jpg"):
+    results = detector.detect(str(test_image))
+
+    print(f"\nResults for {test_image.name}:")
+    for i, result in enumerate(results):
+        print(f"  {i+1}. {result['label']} ({result['confidence']:.2f})")
+        for match in result.get("matches", [])[:3]:
+            print(f"     - Similar to {match['label']} ({match['score']:.2f})")
 ```
 
 ### Research & Experimentation
 
 ```python
 from sam_detect import SAMDetect
-from sam_detect.fading import GaussianFade, LinearFade, ExponentialFade
 
-detector = SAMDetect(device="cuda")
+# Experiment with different model sizes
+for segmenter in ["sam2-small", "sam2-base", "sam2-large"]:
+    for embedder in ["average", "clip-vit-base", "clip-vit-large"]:
+        detector = SAMDetect(
+            segmenter=segmenter,
+            embedder=embedder,
+            device="cuda"
+        )
 
-# Experiment with different fading strategies
-for fade_strategy in [GaussianFade(sigma=20),
-                       LinearFade(max_distance=100),
-                       ExponentialFade(decay=0.05)]:
+        # Benchmark on your test set
+        results = detector.detect("test_image.jpg")
+        print(f"{segmenter} + {embedder}: {len(results)} detections")
 
-    detector.set_fade_strategy(fade_strategy)
-
-    # Evaluate on benchmark
-    metrics = detector.evaluate(
-        dataset_path="benchmark/",
-        metrics=["accuracy", "inference_time", "embedding_quality"]
+# Experiment with different fade strategies
+for fade in ["identity", "gaussian"]:
+    detector = SAMDetect(
+        fade_strategy=fade,
+        device="cuda"
     )
 
-    print(f"{fade_strategy.__class__.__name__}: {metrics}")
+    results = detector.detect("test_image.jpg")
+    print(f"Fade strategy '{fade}': {len(results)} detections")
 ```
 
 ## Configuration
 
-### Fading Strategies
+### Available Models
 
-Configure how context fades from the segmented object:
+Check available models programmatically:
 
 ```python
-from sam_detect import SAMDetect
-from sam_detect.fading import GaussianFade, LinearFade
+from sam_detect import SEGMENTERS, EMBEDDERS, FADE_STRATEGIES, VECTOR_STORES
 
-# Gaussian fade (smooth, recommended)
+print("Segmenters:", SEGMENTERS)
+# Output: ['naive', 'sam2-small', 'sam2-base', 'sam2-large']
+
+print("Embedders:", EMBEDDERS)
+# Output: ['average', 'clip-vit-base', 'clip-vit-large']
+
+print("Fade Strategies:", FADE_STRATEGIES)
+# Output: ['identity', 'gaussian']
+
+print("Vector Stores:", VECTOR_STORES)
+# Output: ['memory', 'qdrant']
+```
+
+Or use HuggingFace model IDs for custom embedders:
+
+```python
+# Use any HuggingFace CLIP model
 detector = SAMDetect(
-    fade_config=GaussianFade(
-        sigma=30,           # Width of Gaussian (pixels)
-        min_fade=0.05,      # Avoid complete darkness
-    )
+    embedder="openai/clip-vit-base-patch16",  # Custom HuggingFace ID
+    device="cuda",
 )
-
-# Linear fade (simple, predictable)
-detector = SAMDetect(
-    fade_config=LinearFade(
-        max_distance=100,   # Distance at which fade = 0
-        min_fade=0.05,
-    )
-)
-
-# Exponential fade (aggressive context suppression)
-detector = SAMDetect(
-    fade_config=ExponentialFade(
-        decay=0.05,         # Decay rate
-        max_distance=200,
-    )
-)
-
-# Custom fade strategy
-class CustomFade:
-    def apply(self, image, mask, distance_map):
-        # distance_map: distance from mask boundary (pixels)
-        # Return faded image
-        pass
-
-detector = SAMDetect(fade_config=CustomFade())
 ```
 
 ### Performance Tuning
 
 ```python
+from sam_detect import SAMDetect
+
+# Fast inference (lightweight models)
 detector = SAMDetect(
-    sam_model="sam2_hiera_large",  # Use "small" or "base" for speed
+    segmenter="sam2-small",      # Smaller SAM2 variant
+    embedder="average",          # No neural network, just color averaging
     device="cuda",
-    tensorrt_enabled=True,          # Enable TensorRT optimization
-    embedding_cache_size=10000,     # Cache embeddings for speed
-    qdrant_batch_size=32,           # k-NN batch size
-    embedding_model="clip-vit-b",   # Choose embedder
+)
+
+# Balanced setup (default)
+detector = SAMDetect(
+    segmenter="sam2-base",       # Good speed/accuracy trade-off
+    embedder="clip-vit-base",    # Standard CLIP model
+    device="cuda",
+)
+
+# High-quality results (slower)
+detector = SAMDetect(
+    segmenter="sam2-large",      # Largest SAM2 variant
+    embedder="clip-vit-large",   # Larger CLIP model
+    device="cuda",
+)
+
+# CPU-only (no GPU required)
+detector = SAMDetect(
+    segmenter="naive",           # No GPU needed
+    embedder="average",          # No GPU needed
+    device="cpu",
 )
 ```
 
