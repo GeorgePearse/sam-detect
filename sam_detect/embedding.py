@@ -1,9 +1,16 @@
-"""Embedding utilities for sam-detect."""
+"""Embedding utilities for sam-detect.
+
+This module provides pluggable embedding backends including:
+- AverageColorEmbedder: Lightweight baseline using color statistics
+- CLIPEmbedder: TensorRT-optimized CLIP vision-language embeddings
+"""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
-from typing import Any, Iterable, Protocol
+from typing import Any, Iterable, Optional, Protocol
+
 
 ImageType = Any
 
@@ -41,33 +48,102 @@ class AverageColorEmbedder:
 
 @dataclass
 class CLIPEmbedder:
-    """Stub embedder guiding users toward a CLIP implementation."""
+    """TensorRT-optimized CLIP embedder for vision-language embeddings.
 
-    model_name: str = "ViT-B-32"
-    device: str | None = None
+    Uses clip_trt for production-quality CLIP inference with TensorRT acceleration.
+
+    References:
+        - clip_trt: https://github.com/dusty-nv/clip_trt
+        - CLIP: https://github.com/openai/CLIP
+    """
+
+    model_name: str = "openai/clip-vit-base-patch32"
+    device: Optional[str] = None
+    embedding_dim: int = 512
 
     def __post_init__(self) -> None:
+        """Initialize CLIP model with TensorRT optimization."""
         self._ensure_dependencies()
+        self.model = self._load_model()
 
     def embed(self, image: ImageType) -> Iterable[float]:
-        raise NotImplementedError(
-            "CLIPEmbedder is a placeholder. Provide an implementation that "
-            "loads CLIP weights and returns an embedding vector."
+        """Generate embedding for an image.
+
+        Args:
+            image: Input image (PIL Image, numpy array, or torch tensor)
+
+        Returns:
+            Embedding as iterable of floats
+        """
+        # Get embedding from CLIP model
+        embedding = self.model.embed_image(image)
+
+        # Convert to tuple of floats
+        if hasattr(embedding, "tolist"):
+            # numpy array or torch tensor
+            return tuple(float(x) for x in embedding.tolist())
+        elif isinstance(embedding, (list, tuple)):
+            return tuple(float(x) for x in embedding)
+
+        # Fallback: return zero embedding if something goes wrong
+        return tuple([0.0] * self.embedding_dim)
+
+    def _load_model(self) -> Any:
+        """Load CLIP model with TensorRT optimization.
+
+        Returns:
+            CLIP model with TensorRT enabled
+
+        Raises:
+            ImportError: If clip_trt is not installed
+        """
+        try:
+            from clip_trt import CLIPModel
+        except ImportError:
+            raise ImportError(
+                "clip_trt is required for TensorRT-optimized CLIP embeddings. "
+                "Install with: pip install 'sam-detect[tensorrt]'"
+            )
+
+        import torch
+
+        if self.device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        if self.device == "cuda":
+            warnings.warn(
+                "Using CUDA for CLIP. Ensure CUDA and TensorRT are properly installed for optimal performance.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Load model with TensorRT enabled
+        model = CLIPModel.from_pretrained(
+            self.model_name,
+            use_tensorrt=True,
+            device=self.device,
         )
 
+        return model
+
     def _ensure_dependencies(self) -> None:
-        try:  # pragma: no cover - optional dependency check
-            import torch  # type: ignore  # noqa: F401
-        except Exception as exc:  # pragma: no cover
+        """Verify all required dependencies are installed.
+
+        Raises:
+            ImportError: If dependencies are missing
+        """
+        try:
+            import torch  # noqa: F401
+        except ImportError as exc:
             raise ImportError(
-                "CLIPEmbedder requires `torch`. Install extras via "
-                "`pip install sam-detect[clip]`."
+                "torch is required for CLIP embeddings. "
+                "Install with: pip install 'sam-detect[tensorrt]'"
             ) from exc
 
-        try:  # pragma: no cover - optional dependency check
-            import open_clip  # type: ignore  # noqa: F401
-        except Exception as exc:  # pragma: no cover
+        try:
+            import clip_trt  # noqa: F401
+        except ImportError as exc:
             raise ImportError(
-                "CLIPEmbedder requires `open_clip_torch`. Install extras via "
-                "`pip install sam-detect[clip]`."
+                "clip_trt is required for TensorRT-optimized CLIP. "
+                "Install with: pip install 'sam-detect[tensorrt]'"
             ) from exc

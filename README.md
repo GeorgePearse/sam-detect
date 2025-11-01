@@ -102,6 +102,8 @@ pip install -e .
 
 ### CLI Quickstart
 
+#### Basic Usage (with NaiveSegmenter)
+
 ```bash
 # 1. Install the project (editable install recommended for dev work)
 uv pip install -e .
@@ -120,59 +122,105 @@ sam-detect path/to/image.jpg \
   --top-k 5 --json
 ```
 
-Key CLI flags:
-- `--store {memory|qdrant}` chooses the vector backend (default: memory)
-- `--embedder {average|clip}` switches embedding strategies
-- `--fade {identity|gaussian}`, `--sigma`, `--min-fade` tune context fading
-- `--top-k` controls the number of nearest neighbours returned per detection
-- `--json` emits structured JSON instead of human-readable text
+#### Production Usage (with SAM2 + CLIP + TensorRT)
+
+```bash
+# 1. Download and cache models (one-time setup)
+pip install 'sam-detect[tensorrt]'
+python -m sam_detect.download_models
+
+# 2. Run with SAM2 segmentation and CLIP embeddings
+sam-detect path/to/image.jpg \
+  --segmenter sam2 --sam-model base \
+  --embedder clip --device cuda
+
+# 3. Or with Qdrant for persistent storage
+sam-detect path/to/image.jpg \
+  --segmenter sam2 --sam-model base \
+  --embedder clip --device cuda \
+  --store qdrant --qdrant-url http://localhost:6333 \
+  --fade gaussian --sigma 30 --top-k 5 --json
+```
+
+**Key CLI flags:**
+- `--segmenter {naive|sam2}` - Segmentation backend (naive for testing, sam2 for production)
+- `--sam-model {small|base|large}` - SAM2 model size (base balances speed/accuracy)
+- `--embedder {average|clip}` - Embedding strategy (clip requires TensorRT install)
+- `--device {cuda|cpu}` - Device for inference (CUDA required for TensorRT)
+- `--store {memory|qdrant}` - Vector store backend
+- `--fade {identity|gaussian}`, `--sigma`, `--min-fade` - Context fading tuning
+- `--top-k` - Number of nearest neighbours to return
+- `--json` - Emit JSON instead of text
 
 ### Quick Start (Python API)
 
-#### 1. Download Model Weights
+#### 1. Install with TensorRT Support
 
 ```bash
-python -m sam_detect.download_models
+# Install SAM2 + CLIP + TensorRT dependencies
+pip install 'sam-detect[tensorrt]'
+
+# Or install individual components
+pip install -e .  # Base installation
+pip install segment-anything-2  # SAM2
+pip install clip-trt  # CLIP with TensorRT
+pip install torch-tensorrt  # TensorRT compiler
 ```
 
-This downloads:
-- SAM2 model weights
-- Feature embedder (CLIP ViT-B)
-- TensorRT engine (cached locally)
+#### 2. Download and Cache Models
 
-#### 2. Start QDrant
+```bash
+# One-time setup: download SAM2 Base and CLIP Base models
+python -m sam_detect.download_models
+
+# Download specific variants:
+python -m sam_detect.download_models --sam-model large
+python -m sam_detect.download_models --clip-model openai/clip-vit-large-patch14
+```
+
+This downloads and caches:
+- SAM2 model weights (specified variant)
+- CLIP model weights (specified variant)
+- TensorRT compiled engines (cached for reuse)
+
+#### 3. Optional: Start QDrant for Persistent Storage
 
 ```bash
 # Local QDrant (Docker)
 docker run -p 6333:6333 qdrant/qdrant:latest
 
-# Or use Qdrant Cloud (managed)
+# Or use Qdrant Cloud (managed, requires API key)
 export QDRANT_API_KEY=your_api_key
 export QDRANT_URL=https://your-instance.qdrant.io
 ```
 
-#### 3. Initialize the System
+#### 4. Initialize with SAM2 + CLIP
 
 ```python
 from sam_detect import SAMDetect
+from sam_detect.segmentation import SAM2Segmenter
+from sam_detect.embedding import CLIPEmbedder
+from sam_detect.fading import GaussianFade
 
-# Create detector with default config
+# Create detector with SAM2 segmentation and CLIP embeddings
 detector = SAMDetect(
-    sam_model="sam2_hiera_large",
-    device="cuda",
-    qdrant_url="http://localhost:6333"
+    segmenter=SAM2Segmenter(model_size="base", device="cuda"),
+    embedder=CLIPEmbedder(model_name="openai/clip-vit-base-patch32", device="cuda"),
+    fade_strategy=GaussianFade(sigma=30, min_fade=0.1),
 )
 
-# Or with custom fading config
+# With Qdrant for persistent storage
+from sam_detect.vector_store import QdrantVectorStore
+
 detector = SAMDetect(
-    sam_model="sam2_hiera_large",
-    device="cuda",
-    qdrant_url="http://localhost:6333",
-    fade_config={
-        "strategy": "gaussian",  # or "linear", "exponential"
-        "sigma": 30,  # Gaussian width in pixels
-        "min_fade": 0.1,  # Minimum fade value (prevent complete darkness)
-    }
+    segmenter=SAM2Segmenter(model_size="base", device="cuda"),
+    embedder=CLIPEmbedder(device="cuda"),
+    fade_strategy=GaussianFade(sigma=30),
+    vector_store=QdrantVectorStore(
+        url="http://localhost:6333",
+        collection_name="sam_detect"
+    ),
+    default_top_k=5,
 )
 ```
 
@@ -410,7 +458,17 @@ MIT License - see LICENSE file for details
 
 ## Acknowledgments
 
-- [SAM2](https://github.com/facebookresearch/segment-anything-2) - Meta AI's Segment Anything Model 2
-- [QDrant](https://qdrant.tech/) - Fast vector database
-- [TensorRT](https://developer.nvidia.com/tensorrt) - NVIDIA's inference optimization
-- Inspired by few-shot learning and instance segmentation research
+**Core Models & Libraries:**
+- [SAM2](https://github.com/facebookresearch/segment-anything-2) - Meta AI's Segment Anything Model 2 for zero-shot instance segmentation
+- [CLIP](https://github.com/openai/CLIP) - OpenAI's vision-language model for semantic understanding
+- [QDrant](https://qdrant.tech/) - High-performance vector database for similarity search
+
+**TensorRT Optimization:**
+- [PyTorch TensorRT SAM2 Tutorial](https://docs.pytorch.org/TensorRT/tutorials/_rendered_examples/dynamo/torch_export_sam2.html) - Official guide for SAM2 TensorRT optimization using torch.export and dynamo backend
+- [clip_trt](https://github.com/dusty-nv/clip_trt) - Optimized CLIP inference with TensorRT by dusty-nv
+- [TensorRT](https://developer.nvidia.com/tensorrt) - NVIDIA's inference optimization framework
+
+**Research Inspiration:**
+- Few-shot learning and instance segmentation research
+- Vision-language models for zero-shot classification
+- Efficient inference optimization techniques

@@ -6,26 +6,29 @@ import argparse
 import json
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 from .embedding import AverageColorEmbedder, CLIPEmbedder, Embedder
 from .fading import FadeStrategy, GaussianFade, IdentityFade
 from .pipeline import SAMDetect, summarize_detection
+from .segmentation import NaiveSegmenter, SAM2Segmenter, SegmentationBackend
 from .vector_store import InMemoryVectorStore, QdrantVectorStore, VectorStore
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     try:
-        embedder = _build_embedder(args.embedder)
+        segmenter = _build_segmenter(args.segmenter, args.sam_model, args.device)
+        embedder = _build_embedder(args.embedder, args.clip_model, args.device)
         fade = _build_fade(args.fade, args.sigma, args.min_fade)
         store = _build_vector_store(args.store, args.qdrant_url, args.qdrant_collection)
     except (ImportError, ValueError) as exc:
         parser.error(str(exc))
 
     detector = SAMDetect(
+        segmenter=segmenter,
         embedder=embedder,
         fade_strategy=fade,
         vector_store=store,
@@ -57,6 +60,43 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the sam-detect pipeline")
     parser.add_argument("images", type=Path, nargs="+", help="Image(s) to process")
     parser.add_argument("--label", help="Optional label to add before detection")
+
+    # Segmentation options
+    parser.add_argument(
+        "--segmenter",
+        choices=("naive", "sam2"),
+        default="naive",
+        help="Segmentation backend (naive for testing, sam2 for production)",
+    )
+    parser.add_argument(
+        "--sam-model",
+        choices=("small", "base", "large"),
+        default="base",
+        help="SAM2 model size (small/base/large)",
+    )
+
+    # Embedding options
+    parser.add_argument(
+        "--embedder",
+        choices=("average", "clip"),
+        default="average",
+        help="Embedding backend",
+    )
+    parser.add_argument(
+        "--clip-model",
+        default="openai/clip-vit-base-patch32",
+        help="CLIP model identifier from Hugging Face",
+    )
+
+    # Device options
+    parser.add_argument(
+        "--device",
+        choices=("cuda", "cpu"),
+        default="cuda",
+        help="Device for inference (cuda for GPU, cpu for CPU)",
+    )
+
+    # Vector store options
     parser.add_argument(
         "--store",
         choices=("memory", "qdrant"),
@@ -71,12 +111,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default="sam_detect",
         help="Qdrant collection name",
     )
-    parser.add_argument(
-        "--embedder",
-        choices=("average", "clip"),
-        default="average",
-        help="Embedding backend",
-    )
+
+    # Fading options
     parser.add_argument(
         "--fade",
         choices=("identity", "gaussian"),
@@ -90,12 +126,16 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.05,
         help="Minimum fade value for Gaussian strategy",
     )
+
+    # Search options
     parser.add_argument(
         "--top-k",
         type=int,
         default=1,
         help="Number of nearest neighbours to return",
     )
+
+    # Output options
     parser.add_argument(
         "--json",
         dest="as_json",
@@ -105,11 +145,47 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_embedder(choice: str) -> Embedder:
+def _build_segmenter(choice: str, sam_model: str, device: str) -> SegmentationBackend:
+    """Build segmenter based on CLI arguments.
+
+    Args:
+        choice: Segmenter choice - "naive" or "sam2"
+        sam_model: SAM2 model size - "small", "base", or "large"
+        device: Device - "cuda" or "cpu"
+
+    Returns:
+        Configured segmentation backend
+
+    Raises:
+        ValueError: If invalid segmenter choice
+        ImportError: If required dependencies are missing
+    """
+    if choice == "naive":
+        return NaiveSegmenter()
+    if choice == "sam2":
+        return SAM2Segmenter(model_size=sam_model, device=device)
+    raise ValueError(f"Unsupported segmenter '{choice}'")
+
+
+def _build_embedder(choice: str, model_name: str, device: str) -> Embedder:
+    """Build embedder based on CLI arguments.
+
+    Args:
+        choice: Embedder choice - "average" or "clip"
+        model_name: Model identifier for CLIP
+        device: Device - "cuda" or "cpu"
+
+    Returns:
+        Configured embedding backend
+
+    Raises:
+        ValueError: If invalid embedder choice
+        ImportError: If required dependencies are missing
+    """
     if choice == "average":
         return AverageColorEmbedder()
     if choice == "clip":
-        return CLIPEmbedder()
+        return CLIPEmbedder(model_name=model_name, device=device)
     raise ValueError(f"Unsupported embedder '{choice}'")
 
 
@@ -121,7 +197,7 @@ def _build_fade(choice: str, sigma: float, min_fade: float) -> FadeStrategy:
     raise ValueError(f"Unsupported fade strategy '{choice}'")
 
 
-def _build_vector_store(store: str, url: str | None, collection: str) -> VectorStore:
+def _build_vector_store(store: str, url: Optional[str], collection: str) -> VectorStore:
     if store == "memory":
         return InMemoryVectorStore()
     if store == "qdrant":
