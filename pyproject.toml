@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sam-detect"
+version = "0.0.0"
+description = "Minimal scaffolding for the sam-detect pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "George Pearse"}]
+
+[project.optional-dependencies]
+qdrant = ["qdrant-client>=1.7.3"]
+clip = ["torch>=2.0.0", "open_clip_torch>=2.24.0"]
+pil = ["pillow>=10.0.0"]
+
+[project.scripts]
+sam-detect = "sam_detect.cli:main"

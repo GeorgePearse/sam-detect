@@ -100,7 +100,34 @@ uv pip install -e .
 pip install -e .
 ```
 
-### Quick Start
+### CLI Quickstart
+
+```bash
+# 1. Install the project (editable install recommended for dev work)
+uv pip install -e .
+
+# 2. Run a memory-backed detection with the default fade
+sam-detect path/to/image.jpg
+
+# 3. Add an example to prime the in-memory store, then detect again
+sam-detect path/to/image.jpg --label widget
+
+# 4. Optional: start Qdrant and enable retrieval + Gaussian fading
+docker run -p 6333:6333 qdrant/qdrant:latest
+sam-detect path/to/image.jpg \
+  --store qdrant --qdrant-url http://localhost:6333 \
+  --fade gaussian --sigma 30 --min-fade 0.05 \
+  --top-k 5 --json
+```
+
+Key CLI flags:
+- `--store {memory|qdrant}` chooses the vector backend (default: memory)
+- `--embedder {average|clip}` switches embedding strategies
+- `--fade {identity|gaussian}`, `--sigma`, `--min-fade` tune context fading
+- `--top-k` controls the number of nearest neighbours returned per detection
+- `--json` emits structured JSON instead of human-readable text
+
+### Quick Start (Python API)
 
 #### 1. Download Model Weights
 
