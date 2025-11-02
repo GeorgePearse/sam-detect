@@ -531,9 +531,10 @@ MIT License - see LICENSE file for details
 - [CLIP](https://github.com/openai/CLIP) - OpenAI's vision-language model for semantic understanding
 - [QDrant](https://qdrant.tech/) - High-performance vector database for similarity search
 
-**TensorRT Optimization:**
+**TensorRT Optimization & Inference:**
 - [PyTorch TensorRT SAM2 Tutorial](https://docs.pytorch.org/TensorRT/tutorials/_rendered_examples/dynamo/torch_export_sam2.html) - Official guide for SAM2 TensorRT optimization using torch.export and dynamo backend
 - [clip_trt](https://github.com/dusty-nv/clip_trt) - Optimized CLIP inference with TensorRT by dusty-nv
+- [ONNX Runtime](https://onnxruntime.ai/) - Cross-platform inference engine with TensorRT execution provider for optimized inference
 - [TensorRT](https://developer.nvidia.com/tensorrt) - NVIDIA's inference optimization framework
 
 **Research Inspiration:**
